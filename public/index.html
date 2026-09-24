@@ -214,7 +214,7 @@ function playersBox(H, A) {
     return head + t.players.map((p) =>
       `<tr><td title="${esc(p.name)}">${esc(p.name)}</td><td title="${esc(p.team)}">${esc(p.team)}</td><td>${f1(p.pts)}</td><td>${f1(p.ast)}</td><td>${f1(p.reb)}</td></tr>`).join("");
   };
-  return `<div class="pl"><h4>Top 5 jugadores por puntos (promedio por juego)</h4>
+  return `<div class="pl"><h4>Top 5 jugadores por puntos (promedio por juego) · — = no está entre los 100 líderes de esa estadística</h4>
     <table><tr><th>Jugador</th><th>Equipo</th><th>PTS</th><th>AST</th><th>REB</th></tr>
     ${part(H, "h")}${part(A, "a")}</table></div>`;
 }
