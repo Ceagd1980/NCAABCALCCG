@@ -289,45 +289,106 @@ function parseStat(html) {
 }
 
 // ---------- estadísticas de jugadores ----------
-// Tabla con columnas "Player", "Team" y el valor (columna "Value" o la última numérica)
-function parsePlayers(html) {
-  const isHdr = (r) => r.some((c) => /^player$|^name$/i.test(c)) && r.some((c) => /^team$|^school$/i.test(c));
-  const t = parseTables(html).find((t) => t.rows.some(isHdr));
-  if (!t) throw new Error("tabla de jugadores no encontrada");
-  const hdr = t.rows.find(isHdr);
-  const iP = hdr.findIndex((c) => /^player$|^name$/i.test(c));
-  const iT = hdr.findIndex((c) => /^team$|^school$/i.test(c));
-  let iV = hdr.findIndex((c) => /^value$|per\s*game|^avg|^ppg$|^apg$|^rpg$|^pts$|^ast$|^reb$/i.test(c));
+// Busca la tabla con columnas de jugador, equipo y valor. Si la cabecera no las nombra,
+// las deduce del contenido (columna con nombres de personas, columna con equipos, última numérica).
+const RE_PLAYER = /player|^name$|athlete/i;
+const RE_TEAM = /team|school|college/i;
+const RE_VALUE = /^value$|per\s*game|^avg|average|^ppg$|^apg$|^rpg$|^pts$|^ast$|^reb$|points|assists|rebounds/i;
 
-  const byTeam = {};
-  for (const r of t.rows) {
-    if (isHdr(r) || !r[iP] || !r[iT]) continue;
-    let v = iV >= 0 ? num(r[iV]) : null;
-    if (v == null) { // última celda numérica de la fila
-      for (let i = r.length - 1; i > Math.max(iP, iT); i--) { v = num(r[i]); if (v != null) break; }
+function parsePlayers(html) {
+  const tables = parseTables(html).filter((t) => t.rows.length >= 3);
+  if (!tables.length) throw new Error("tabla de jugadores no encontrada");
+  let best = null;
+  for (const t of tables) {
+    const hi = t.rows.findIndex((r) => r.some((c) => RE_PLAYER.test(c)) && r.some((c) => RE_TEAM.test(c)));
+    let iP = -1, iT = -1, iV = -1, start = 0;
+    if (hi >= 0) {
+      const hdr = t.rows[hi];
+      iP = hdr.findIndex((c) => RE_PLAYER.test(c));
+      iT = hdr.findIndex((c, i) => i !== iP && RE_TEAM.test(c));
+      iV = hdr.findIndex((c, i) => i !== iP && i !== iT && RE_VALUE.test(c));
+      start = hi + 1;
+    } else {
+      // Deducción por contenido: texto sin dígitos en 2 columnas (jugador = la que tiene más palabras)
+      const body = t.rows.filter((r) => r.length >= 3).slice(0, 30);
+      if (body.length < 3) continue;
+      const cols = Math.max(...body.map((r) => r.length));
+      const textCols = [];
+      for (let i = 0; i < cols; i++) {
+        const vals = body.map((r) => r[i] || "");
+        const txt = vals.filter((v) => /[a-z]/i.test(v) && !/\d/.test(v)).length;
+        const avgLen = vals.reduce((n, v) => n + v.length, 0) / vals.length;
+        // descarta columnas cortas tipo posición (G, F, C, G-F)
+        if (txt >= body.length * 0.8 && avgLen > 3) textCols.push({ i, uniq: new Set(vals).size / vals.length });
+      }
+      if (textCols.length < 2) continue;
+      // Jugador = la columna con más valores distintos (los equipos se repiten); empate = la primera
+      textCols.sort((x, y) => y.uniq - x.uniq || x.i - y.i);
+      iP = textCols[0].i; iT = textCols[1].i;
     }
-    if (v == null) continue;
-    const tk = key(cleanTeam(r[iT]));
-    (byTeam[tk] ||= {})[pkey(r[iP])] = { name: r[iP], team: r[iT], v };
+    const byTeam = {};
+    let n = 0;
+    for (const r of t.rows.slice(start)) {
+      if (!r[iP] || !r[iT] || RE_PLAYER.test(r[iP])) continue;
+      let v = iV >= 0 ? num(r[iV]) : null;
+      if (v == null) for (let i = r.length - 1; i >= 0; i--) { if (i === iP || i === iT) continue; v = num(r[i]); if (v != null) break; }
+      if (v == null) continue;
+      const tk = key(cleanTeam(r[iT]));
+      (byTeam[tk] ||= {})[pkey(r[iP])] = { name: r[iP], team: r[iT], v };
+      n++;
+    }
+    if (!best || n > best.n) best = { n, byTeam };
   }
-  if (!Object.keys(byTeam).length) throw new Error("sin jugadores en la tabla");
-  return byTeam;
+  if (!best || !best.n) throw new Error("tabla de jugadores no encontrada");
+  return best.byTeam;
 }
 
-function topPlayers(players, teamName) {
+// Equipo del calendario -> clave del equipo en la tabla de jugadores.
+// Exacta primero; si la tabla usa "Iowa St Cyclones", se acepta el prefijo SOLO si es único
+// y no pertenece a otro equipo conocido más largo (evita que "Iowa" tome a "Iowa St").
+function resolveTeam(tk, playerMap, knownKeys) {
+  if (!playerMap) return null;
+  if (playerMap[tk]) return tk;
+  const cands = Object.keys(playerMap).filter((p) =>
+    p.startsWith(tk) && !knownKeys.some((k) => k.length > tk.length && k.startsWith(tk) && p.startsWith(k)));
+  return cands.length === 1 ? cands[0] : null;
+}
+
+function topPlayers(players, teamName, knownKeys) {
   const tk = key(teamName);
-  const byPts = players.pts?.[tk];
-  if (!byPts) return null;
-  return Object.entries(byPts)
+  const kp = resolveTeam(tk, players.pts, knownKeys);
+  if (!kp) return null;
+  const ka = resolveTeam(tk, players.ast, knownKeys), kr = resolveTeam(tk, players.reb, knownKeys);
+  return Object.entries(players.pts[kp])
     .sort((a, b) => b[1].v - a[1].v)
     .slice(0, TOP_PLAYERS)
     .map(([pk, p]) => ({
       name: p.name,
       team: p.team,
       pts: p.v,
-      ast: players.ast?.[tk]?.[pk]?.v ?? null,
-      reb: players.reb?.[tk]?.[pk]?.v ?? null,
+      ast: ka ? players.ast[ka]?.[pk]?.v ?? null : null,
+      reb: kr ? players.reb[kr]?.[pk]?.v ?? null : null,
     }));
+}
+
+// Diagnóstico: /api/ncaab?debug=players muestra cómo vienen las páginas de jugadores
+async function debugPlayers() {
+  const out = {};
+  for (const [k, u] of Object.entries(PLAYER_STATS)) {
+    try {
+      const r = await fetch(u, { headers: HEADERS });
+      const html = await r.text();
+      const tables = parseTables(html);
+      out[k] = {
+        url: u, status: r.status, bytes: html.length, tables: tables.length,
+        muestra: tables.slice(0, 4).map((t) => ({ filas: t.rows.length, primeras: t.rows.slice(0, 4) })),
+        pistas: ["datatable", "tr-table", "json", "__NEXT_DATA__", "ajax", "player"].filter((w) => html.includes(w)),
+      };
+      try { const m = parsePlayers(html); out[k].equipos = Object.keys(m).length; out[k].ejemploEquipos = Object.keys(m).slice(0, 8); }
+      catch (e) { out[k].error = e.message; }
+    } catch (e) { out[k] = { url: u, error: e.message }; }
+  }
+  return out;
 }
 
 const find = (map, name) => (map ? map[key(name)] || null : null);
@@ -340,6 +401,8 @@ const json = (body, status, extra = {}) =>
 
 export default async (req) => {
   const url = new URL(req.url);
+  if (url.searchParams.get("debug") === "players")
+    return json(await debugPlayers(), 200, { "Cache-Control": "no-store" });
   const date = url.searchParams.get("date");
   const validDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
 
@@ -378,12 +441,13 @@ export default async (req) => {
   const players = {};
   for (const k of Object.keys(PLAYER_STATS)) players[k] = safe(`p_${k}`, parsePlayers, html[`p_${k}`]);
 
+  const knownKeys = Object.keys(stats.pts || {});
   const warned = new Set();
   const noData = [];
   const team = (name) => {
     const t = { name, standing: find(standings, name) };
     for (const k of STAT_KEYS) t[k] = find(stats[k], name);
-    t.players = topPlayers(players, name);
+    t.players = topPlayers(players, name, knownKeys);
     const loaded = { standing: standings, ...stats };
     const missing = Object.keys(loaded).filter((k) => loaded[k] && !t[k]);
     if (missing.length && !warned.has(name)) {
@@ -396,6 +460,8 @@ export default async (req) => {
 
   const teams = {};
   for (const g of games) for (const n of [g.home, g.away]) if (!teams[n]) teams[n] = team(n);
+  if (players.pts && games.length && !Object.values(teams).some((t) => t.players))
+    warnings.push(`Jugadores: la tabla cargó (${Object.keys(players.pts).length} equipos) pero ningún nombre coincidió. Ej.: ${Object.values(players.pts).slice(0, 3).map((m) => Object.values(m)[0].team).join(", ")}`);
   if (noData.length)
     warnings.push(`Sin estadísticas (normalmente equipos fuera de División I): ${noData.sort().join(", ")}`);
 
