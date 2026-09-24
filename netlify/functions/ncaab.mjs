@@ -63,6 +63,8 @@ const ALIAS = {
   utarlington: "texasarlington", utmartin: "tennesseemartin", tennmartin: "tennesseemartin",
   sfaustin: "stephenfaustin", stephenfaustinst: "stephenfaustin", sfa: "stephenfaustin",
   umkc: "kansascity", mdbaltco: "marylandbaltimorecounty", ualbany: "albany", albanyny: "albany",
+  purduefortwayne: "fortwayne", purduefw: "fortwayne", ipfw: "fortwayne", pfw: "fortwayne",
+  iuindianapolis: "iuindy", iuindy: "iuindy",
 };
 
 function key(s) {
@@ -354,24 +356,42 @@ function parsePlayers(html) {
 // Las páginas de jugadores escriben el equipo con su apodo ("BYU Cougars", "Iowa State Cyclones",
 // "North Carolina Tar Heels"). Se quita el apodo palabra por palabra desde el final hasta que el
 // nombre coincide EXACTO con un equipo conocido; así "Iowa State Cyclones" nunca cae en "Iowa".
+// Se quitan como máximo 2 palabras (el apodo: "Tar Heels", "Red Raiders"). Con más se corría el riesgo
+// de que "Purdue Fort Wayne Mastodons" terminara como "Purdue".
 function teamFromPlayerPage(raw, known) {
   const words = cleanTeam(raw).split(/\s+/).filter(Boolean);
-  for (let drop = 0; drop <= 3 && drop < words.length; drop++) {
+  for (let drop = 0; drop <= 2 && drop < words.length; drop++) {
     const k = key(words.slice(0, words.length - drop).join(" "));
-    if (known.has(k)) return k;
+    if (known.has(k)) return { k, drop };
   }
   return null;
 }
 
-// Reagrupa cada tabla de jugadores por la clave de equipo del calendario
-function remapPlayers(map, known) {
-  if (!map) return null;
+// Reagrupa las 3 tablas de jugadores por la clave de equipo del calendario.
+// Si dos equipos distintos de la página de jugadores apuntan al mismo equipo, gana el que
+// necesitó quitar menos palabras (el otro se descarta en vez de mezclar jugadores).
+function remapAllPlayers(players, known) {
+  const raws = new Map(); // nombre crudo -> {k, drop}
+  for (const map of Object.values(players)) {
+    if (!map) continue;
+    for (const [rawKey, plist] of Object.entries(map)) {
+      const team = Object.values(plist)[0].team;
+      if (raws.has(team)) continue;
+      raws.set(team, known.has(rawKey) ? { k: rawKey, drop: 0 } : teamFromPlayerPage(team, known));
+    }
+  }
+  const bestDrop = {};
+  for (const r of raws.values()) if (r) bestDrop[r.k] = Math.min(bestDrop[r.k] ?? 9, r.drop);
   const out = {};
-  for (const [rawKey, plist] of Object.entries(map)) {
-    const any = Object.values(plist)[0];
-    const k = known.has(rawKey) ? rawKey : teamFromPlayerPage(any.team, known);
-    if (!k) continue;
-    Object.assign((out[k] ||= {}), plist);
+  for (const [name, map] of Object.entries(players)) {
+    if (!map) { out[name] = null; continue; }
+    const m = {};
+    for (const plist of Object.values(map)) {
+      const r = raws.get(Object.values(plist)[0].team);
+      if (!r || r.drop !== bestDrop[r.k]) continue;
+      Object.assign((m[r.k] ||= {}), plist);
+    }
+    out[name] = m;
   }
   return out;
 }
@@ -493,7 +513,7 @@ export default async (req) => {
   ]);
   const rawPlayerTeams = players.pts ? Object.keys(players.pts).length : 0;
   const samplePlayerTeams = players.pts ? Object.values(players.pts).slice(0, 3).map((m) => Object.values(m)[0].team) : [];
-  for (const k of Object.keys(PLAYER_STATS)) players[k] = remapPlayers(players[k], known);
+  Object.assign(players, remapAllPlayers(players, known));
   const warned = new Set();
   const noData = [];
   const team = (name) => {
