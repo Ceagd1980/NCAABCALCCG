@@ -55,6 +55,14 @@ const ALIAS = {
   uncwilmington: "ncwilmington", uncgreensboro: "ncgreensboro", uncasheville: "ncasheville",
   siue: "siuedwardsville", liu: "longisland", liubrooklyn: "longisland", fgcu: "flagulfcoast",
   loyolachicago: "loyolachi", iupui: "iuindy", etsu: "etennesseest", mtst: "mtsu",
+  // nombres largos que usan las páginas de jugadores
+  csunorthridge: "csnorthridge", calstnorthridge: "csnorthridge", csufullerton: "csfullerton",
+  calstfullerton: "csfullerton", csubakersfield: "csbakersfield", calstbakersfield: "csbakersfield",
+  calbaptist: "californiabaptist", cconn: "cconnecticut", cconnst: "cconnecticut", cconnecticutst: "cconnecticut",
+  unc: "ncarolina", unlv: "nevadalasvegas", utrgv: "texasriograndevalley", txriogrande: "texasriograndevalley",
+  utarlington: "texasarlington", utmartin: "tennesseemartin", tennmartin: "tennesseemartin",
+  sfaustin: "stephenfaustin", stephenfaustinst: "stephenfaustin", sfa: "stephenfaustin",
+  umkc: "kansascity", mdbaltco: "marylandbaltimorecounty", ualbany: "albany", albanyny: "albany",
 };
 
 function key(s) {
@@ -343,32 +351,66 @@ function parsePlayers(html) {
   return best.byTeam;
 }
 
-// Equipo del calendario -> clave del equipo en la tabla de jugadores.
-// Exacta primero; si la tabla usa "Iowa St Cyclones", se acepta el prefijo SOLO si es único
-// y no pertenece a otro equipo conocido más largo (evita que "Iowa" tome a "Iowa St").
-function resolveTeam(tk, playerMap, knownKeys) {
-  if (!playerMap) return null;
-  if (playerMap[tk]) return tk;
-  const cands = Object.keys(playerMap).filter((p) =>
-    p.startsWith(tk) && !knownKeys.some((k) => k.length > tk.length && k.startsWith(tk) && p.startsWith(k)));
-  return cands.length === 1 ? cands[0] : null;
+// Las páginas de jugadores escriben el equipo con su apodo ("BYU Cougars", "Iowa State Cyclones",
+// "North Carolina Tar Heels"). Se quita el apodo palabra por palabra desde el final hasta que el
+// nombre coincide EXACTO con un equipo conocido; así "Iowa State Cyclones" nunca cae en "Iowa".
+function teamFromPlayerPage(raw, known) {
+  const words = cleanTeam(raw).split(/\s+/).filter(Boolean);
+  for (let drop = 0; drop <= 3 && drop < words.length; drop++) {
+    const k = key(words.slice(0, words.length - drop).join(" "));
+    if (known.has(k)) return k;
+  }
+  return null;
 }
 
-function topPlayers(players, teamName, knownKeys) {
+// Reagrupa cada tabla de jugadores por la clave de equipo del calendario
+function remapPlayers(map, known) {
+  if (!map) return null;
+  const out = {};
+  for (const [rawKey, plist] of Object.entries(map)) {
+    const any = Object.values(plist)[0];
+    const k = known.has(rawKey) ? rawKey : teamFromPlayerPage(any.team, known);
+    if (!k) continue;
+    Object.assign((out[k] ||= {}), plist);
+  }
+  return out;
+}
+
+function topPlayers(players, teamName) {
   const tk = key(teamName);
-  const kp = resolveTeam(tk, players.pts, knownKeys);
-  if (!kp) return null;
-  const ka = resolveTeam(tk, players.ast, knownKeys), kr = resolveTeam(tk, players.reb, knownKeys);
-  return Object.entries(players.pts[kp])
+  const byPts = players.pts?.[tk];
+  if (!byPts) return null;
+  return Object.entries(byPts)
     .sort((a, b) => b[1].v - a[1].v)
     .slice(0, TOP_PLAYERS)
     .map(([pk, p]) => ({
       name: p.name,
       team: p.team,
       pts: p.v,
-      ast: ka ? players.ast[ka]?.[pk]?.v ?? null : null,
-      reb: kr ? players.reb[kr]?.[pk]?.v ?? null : null,
+      ast: players.ast?.[tk]?.[pk]?.v ?? null,
+      reb: players.reb?.[tk]?.[pk]?.v ?? null,
     }));
+}
+
+// Diagnóstico: /api/ncaab?debug=team&slug=michigan-wolverines prueba posibles páginas de plantel
+async function debugTeam(slug) {
+  const base = `${SITE}/ncaa-basketball/team/${slug}`;
+  const cands = ["", "/stats", "/players", "/player-stats", "/roster", "/leaders"];
+  const out = {};
+  await Promise.all(cands.map(async (c) => {
+    const u = base + c;
+    try {
+      const r = await fetch(u, { headers: HEADERS, redirect: "follow" });
+      const html = await r.text();
+      const tables = parseTables(html);
+      out[c || "/"] = {
+        status: r.status, final: r.url, bytes: html.length, tables: tables.length,
+        cabeceras: tables.map((t) => [t.rows.length, (t.rows[0] || []).slice(0, 8).join(" | "), (t.rows[1] || []).slice(0, 8).join(" | ")]),
+        enlacesJugador: [...new Set((html.match(/href="[^"]*player[^"]*"/gi) || []).slice(0, 6))],
+      };
+    } catch (e) { out[c || "/"] = { error: e.message }; }
+  }));
+  return out;
 }
 
 // Diagnóstico: /api/ncaab?debug=players muestra cómo vienen las páginas de jugadores
@@ -403,6 +445,8 @@ export default async (req) => {
   const url = new URL(req.url);
   if (url.searchParams.get("debug") === "players")
     return json(await debugPlayers(), 200, { "Cache-Control": "no-store" });
+  if (url.searchParams.get("debug") === "team")
+    return json(await debugTeam((url.searchParams.get("slug") || "michigan-wolverines").replace(/[^a-z0-9-]/gi, "")), 200, { "Cache-Control": "no-store" });
   const date = url.searchParams.get("date");
   const validDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
 
@@ -441,13 +485,21 @@ export default async (req) => {
   const players = {};
   for (const k of Object.keys(PLAYER_STATS)) players[k] = safe(`p_${k}`, parsePlayers, html[`p_${k}`]);
 
-  const knownKeys = Object.keys(stats.pts || {});
+  // Equipos conocidos (todas las tablas de equipos + posiciones + calendario) para reconocer apodos
+  const known = new Set([
+    ...STAT_KEYS.flatMap((k) => Object.keys(stats[k] || {})),
+    ...Object.keys(standings || {}),
+    ...games.flatMap((g) => [key(g.home), key(g.away)]),
+  ]);
+  const rawPlayerTeams = players.pts ? Object.keys(players.pts).length : 0;
+  const samplePlayerTeams = players.pts ? Object.values(players.pts).slice(0, 3).map((m) => Object.values(m)[0].team) : [];
+  for (const k of Object.keys(PLAYER_STATS)) players[k] = remapPlayers(players[k], known);
   const warned = new Set();
   const noData = [];
   const team = (name) => {
     const t = { name, standing: find(standings, name) };
     for (const k of STAT_KEYS) t[k] = find(stats[k], name);
-    t.players = topPlayers(players, name, knownKeys);
+    t.players = topPlayers(players, name);
     const loaded = { standing: standings, ...stats };
     const missing = Object.keys(loaded).filter((k) => loaded[k] && !t[k]);
     if (missing.length && !warned.has(name)) {
@@ -461,7 +513,10 @@ export default async (req) => {
   const teams = {};
   for (const g of games) for (const n of [g.home, g.away]) if (!teams[n]) teams[n] = team(n);
   if (players.pts && games.length && !Object.values(teams).some((t) => t.players))
-    warnings.push(`Jugadores: la tabla cargó (${Object.keys(players.pts).length} equipos) pero ningún nombre coincidió. Ej.: ${Object.values(players.pts).slice(0, 3).map((m) => Object.values(m)[0].team).join(", ")}`);
+    warnings.push(`Jugadores: la tabla cargó (${rawPlayerTeams} equipos) pero ningún equipo de esta fecha aparece en ella. Ej.: ${samplePlayerTeams.join(", ")}`);
+  const withoutPlayers = Object.values(teams).filter((t) => t.pts && !t.players).map((t) => t.name);
+  if (players.pts && withoutPlayers.length && withoutPlayers.length < Object.keys(teams).length)
+    warnings.push(`Sin jugadores en la lista de TeamRankings: ${withoutPlayers.sort().join(", ")}`);
   if (noData.length)
     warnings.push(`Sin estadísticas (normalmente equipos fuera de División I): ${noData.sort().join(", ")}`);
 
