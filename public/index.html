@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radar NCAAB</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏀</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Barlow+Semi+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#141a3a; --panel:#1d2550; --line:#2c3670; --text:#e9ecf8; --dim:#9aa3cc;
+  --amber:#ffb547; --home:#39d0bd; --away:#ff8a7a; --win:#5fe08a; --loss:#ff6b6b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.4 "Barlow Semi Condensed",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;
+  padding:18px 20px 14px;border-bottom:2px solid var(--amber)}
+h1{margin:0;font:700 32px/1 Oswald,sans-serif;letter-spacing:.5px}
+h1 small{display:block;font:400 14px "Barlow Semi Condensed";color:var(--dim);letter-spacing:0;margin-top:4px}
+.controls{display:flex;gap:8px;align-items:center}
+input[type=date],button{font:600 15px "Barlow Semi Condensed";background:var(--panel);color:var(--text);
+  border:1px solid var(--line);border-radius:6px;padding:7px 10px}
+button{background:var(--amber);color:#1a1300;border-color:var(--amber);cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+#status{padding:10px 20px;color:var(--dim);min-height:20px}
+#status.err{color:var(--loss)}
+#status.warn{color:var(--amber)}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;padding:4px 20px 24px}
+.game{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.meta{display:flex;justify-content:space-between;gap:8px;padding:7px 12px;font-size:13px;color:var(--dim);
+  border-bottom:1px solid var(--line)}
+.teams{padding:6px 12px}
+.team{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:8px;padding:5px 0}
+.tag{font:700 11px Oswald;text-align:center;border-radius:4px;padding:2px 0}
+.tag.h{background:var(--home);color:#062521}.tag.a{background:var(--away);color:#2b0a06}
+.name{font:600 19px/1.1 Oswald,sans-serif}
+.name .rk{color:var(--amber);font-size:14px;margin-right:4px}
+.info{display:flex;gap:10px;font-size:14px;white-space:nowrap}
+.info .pos{color:var(--dim)}
+.W{color:var(--win);font-weight:700}.L{color:var(--loss);font-weight:700}
+.boxes{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px 10px}
+.box{border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.box.h{border-top:3px solid var(--home)}.box.a{border-top:3px solid var(--away)}
+.box h3{margin:0 0 3px;font:600 13px "Barlow Semi Condensed";color:var(--dim)}
+.box table{width:100%;border-collapse:collapse;font-size:14px}
+.box td{padding:1px 0}.box td:last-child{text-align:right;font-weight:700;white-space:nowrap}
+.fb{color:var(--amber);cursor:help}
+.calc{background:#171e45;border-top:1px solid var(--line);padding:9px 12px 11px}
+.calc table{width:100%;border-collapse:collapse;font-size:14px}
+.calc th{font-weight:600;color:var(--dim);text-align:right;padding:2px 4px;font-size:12px}
+.calc th:first-child,.calc td:first-child{text-align:left}
+.calc td{padding:3px 4px;text-align:right;border-top:1px solid var(--line)}
+.score{font:700 16px Oswald}
+.score .h{color:var(--home)}.score .a{color:var(--away)}
+.line{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.line b{font:700 20px Oswald;color:var(--amber)}
+.line span{color:var(--dim);font-size:13px}
+.sep{height:8px}
+input[type=search]{font:600 15px "Barlow Semi Condensed";background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 10px;width:220px}
+.chk{display:flex;align-items:center;gap:5px;color:var(--dim);font-size:14px;white-space:nowrap}
+.controls{flex-wrap:wrap}
+@media (max-width:520px){input[type=search]{width:100%}.team{grid-template-columns:44px 1fr}.team .info{grid-column:2;font-size:13px}}
+button.nav{background:var(--panel);color:var(--text);border-color:var(--line);padding:7px 9px}
+.pl{border-top:1px solid var(--line);padding:9px 12px 11px}
+.pl h4{margin:0 0 4px;font:600 13px "Barlow Semi Condensed";color:var(--dim)}
+.pl table{width:100%;border-collapse:collapse;font-size:13.5px}
+.pl th{font-weight:600;color:var(--dim);font-size:12px;text-align:right;padding:2px 3px}
+.pl td{padding:2px 3px;text-align:right;border-top:1px solid var(--line)}
+.pl th:nth-child(-n+2),.pl td:nth-child(-n+2){text-align:left}
+.pl td:first-child{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl td:nth-child(2){color:var(--dim);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl tr.side td{border-top:0;padding-top:6px;font-weight:700;text-align:left}
+.pl tr.side.h td{color:var(--home)}.pl tr.side.a td{color:var(--away)}
+.pl .none{color:var(--dim);font-size:13px;text-align:left}
+.day{grid-column:1/-1;margin:10px 0 -4px;font:600 18px Oswald,sans-serif;color:var(--amber)}
+.empty{grid-column:1/-1;padding:40px 10px;text-align:center;color:var(--dim)}
+footer{padding:0 20px 28px;color:var(--dim);font-size:13px;max-width:900px}
+footer p{margin:4px 0}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+details{padding:0 20px 10px;color:var(--dim);font-size:13px}
+@media (max-width:420px){main{grid-template-columns:1fr;padding:4px 10px 20px}header{padding:14px 12px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Radar NCAAB<small>Básquet colegial: partidos del día, posiciones, proyecciones y jugadores</small></h1>
+  <div class="controls">
+    <label for="q" class="sr">Buscar equipo o conferencia</label>
+    <input type="search" id="q" placeholder="Buscar equipo o conferencia" autocomplete="off">
+    <label class="chk"><input type="checkbox" id="full"> Solo con datos</label>
+    <button id="prev" class="nav" type="button" aria-label="Día anterior">◀</button>
+    <label for="date" class="sr">Fecha</label>
+    <input type="date" id="date">
+    <button id="next" class="nav" type="button" aria-label="Día siguiente">▶</button>
+    <button id="load">Actualizar</button>
+  </div>
+</header>
+<div id="status" role="status" aria-live="polite"></div>
+<details id="warnbox" hidden><summary>Avisos de datos</summary><ul id="warnlist"></ul></details>
+<main id="games"></main>
+<footer>
+  <p>Datos: TeamRankings.com. El local se mide con sus números jugando en casa y la visita con sus números fuera. <span class="fb">*</span> = sin partidos en esa condición, se usa el promedio de la temporada.</p>
+  <p>En cancha neutral ("vs.") ambos equipos se miden con su promedio de temporada. Jugadores: los 5 con más puntos por juego de cada equipo.</p>
+  <p>Marcador A: local en casa vs visita fuera. B: promedio de temporada de ambos. C: últimos 3 partidos. Total = puntos local + puntos visita. Hándicap = local − visita; si es positivo, el local es favorito por esa cantidad.</p>
+</footer>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const fx = (d) => (v) => (v == null || !isFinite(v) ? "—" : v.toFixed(d));
+const f1 = fx(1);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const DAYS = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+const MON = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+
+let DATA = null, FROM_CACHE = false;
+
+// Fechas siempre en hora local: "2026-09-24" -> jueves 24 sep 2026
+function isoOf(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+function addDays(iso, n) { const [y,m,d] = iso.split("-").map(Number); return isoOf(new Date(y, m-1, d+n)); }
+function dayTitle(iso) { const [y,m,d] = iso.split("-").map(Number); const dt = new Date(y, m-1, d); return `${DAYS[dt.getDay()]} ${d} ${MON[m-1]} ${y}`; }
+
+// Valor según condición. Local = "home", visita = "away"; cancha neutral o sin dato = temporada
+function pick(stat, side, neutral) {
+  if (!stat) return { v: null, fb: false };
+  if (neutral) return { v: stat.season ?? null, fb: false };
+  const split = side === "home" ? stat.home : stat.away;
+  if (split != null) return { v: split, fb: false };
+  return { v: stat.season ?? null, fb: stat.season != null };
+}
+const cell = (p) => p.v == null ? "—" : `${f1(p.v)}${p.fb ? ' <span class="fb" title="Sin partidos en esta condición: promedio de temporada">*</span>' : ""}`;
+
+function spreadText(d) {
+  if (d == null || !isFinite(d)) return "—";
+  if (Math.abs(d) < 0.05) return "Pick'em";
+  return d > 0 ? `Local −${d.toFixed(1)}` : `Visita −${(-d).toFixed(1)}`;
+}
+const signed = (d) => (d == null || !isFinite(d) ? "—" : (d > 0 ? "+" : "") + d.toFixed(1));
+
+// Marcador exacto: redondea; en básquet no hay empates
+function exact(l, v) {
+  if (l == null || v == null) return null;
+  let L = Math.round(l), V = Math.round(v);
+  if (L === V) { if (l >= v) L++; else V++; }
+  return { L, V, total: l + v, diff: l - v };
+}
+
+function streakHtml(s) {
+  if (!s) return "—";
+  const c = /^W/i.test(s) ? "W" : /^L/i.test(s) ? "L" : "";
+  return `<span class="${c}">${esc(s)}</span>`;
+}
+
+function teamRow(t, side, rank) {
+  const st = t.standing;
+  const noData = !st && !t.pts;
+  const pct = st && st.pct != null ? (st.pct * 100).toFixed(1) + "%" : "—";
+  const pos = st ? `${st.pos}º ${st.div}` : noData ? "Sin datos (no D-I)" : "—";
+  return `<div class="team">
+    <span class="tag ${side === "home" ? "h" : "a"}">${side === "home" ? "LOCAL" : "VISITA"}</span>
+    <span class="name">${rank ? `<span class="rk">#${rank}</span>` : ""}${esc(t.name)}</span>
+    <span class="info"><span class="pos">${esc(pos)}</span>${noData ? "" : `<span>${pct}</span>${streakHtml(st && st.streak)}`}</span>
+  </div>`;
+}
+
+function box(t, side, neutral) {
+  const cls = side === "home" ? "h" : "a";
+  const cond = neutral ? "temporada (neutral)" : side === "home" ? "en casa" : "fuera";
+  return `<div class="box ${cls}"><h3>${esc(t.name)} ${cond}</h3><table>
+    <tr><td>Pts 1ª mitad</td><td>${cell(pick(t.h1, side, neutral))}</td></tr>
+    <tr><td>Pts juego</td><td>${cell(pick(t.pts, side, neutral))}</td></tr>
+    <tr><td>Triples</td><td>${cell(pick(t.three, side, neutral))}</td></tr>
+    <tr><td>Rebotes</td><td>${cell(pick(t.reb, side, neutral))}</td></tr>
+    <tr><td>Asistencias</td><td>${cell(pick(t.ast, side, neutral))}</td></tr>
+  </table></div>`;
+}
+
+function calc(H, A, neutral) {
+  const scen = [
+    [neutral ? "A · Temporada (neutral)" : "A · Casa/fuera", pick(H.pts, "home", neutral).v, pick(A.pts, "away", neutral).v],
+    ["B · Temporada", H.pts?.season ?? null, A.pts?.season ?? null],
+    ["C · Últimos 3", H.pts?.last3 ?? null, A.pts?.last3 ?? null],
+  ].map(([n, l, v]) => [n, exact(l, v)]);
+
+  const main = scen[0][1];
+  const lineHtml = main
+    ? `<div class="line"><div>Total <b>${f1(main.total)}</b></div><div>Spread <b>${spreadText(main.diff)}</b></div></div>`
+    : `<div class="line"><span>Sin datos suficientes para la proyección</span></div>`;
+
+  const rows = scen.map(([n, s]) => s
+    ? `<tr><td>${n}</td><td class="score"><span class="h">${s.L}</span>–<span class="a">${s.V}</span></td><td>${f1(s.total)}</td><td>${signed(s.diff)}</td></tr>`
+    : `<tr><td>${n}</td><td>—</td><td>—</td><td>—</td></tr>`).join("");
+
+  const per = [["1ª mitad", "h1"], ["Juego", "pts"], ["Triples", "three"]].map(([n, k]) => {
+    const l = pick(H[k], "home", neutral).v, v = pick(A[k], "away", neutral).v;
+    const ok = l != null && v != null;
+    return `<tr><td>${n}</td><td>${ok ? f1(l + v) : "—"}</td><td>${ok ? signed(l - v) : "—"}</td><td>${ok ? spreadText(l - v) : "—"}</td></tr>`;
+  }).join("");
+
+  return `<div class="calc">${lineHtml}
+    <table><tr><th>Marcador posible</th><th>L–V</th><th>Total</th><th>Hándicap</th></tr>${rows}</table>
+    <div class="sep"></div>
+    <table><tr><th>Periodo</th><th>Total</th><th>Hándicap</th><th>Spread</th></tr>${per}</table>
+  </div>`;
+}
+
+function playersBox(H, A) {
+  const part = (t, cls) => {
+    const head = `<tr class="side ${cls}"><td colspan="5">${esc(t.name)}</td></tr>`;
+    if (!t.players || !t.players.length) return head + `<tr><td colspan="5" class="none">Sin datos de jugadores</td></tr>`;
+    return head + t.players.map((p) =>
+      `<tr><td title="${esc(p.name)}">${esc(p.name)}</td><td title="${esc(p.team)}">${esc(p.team)}</td><td>${f1(p.pts)}</td><td>${f1(p.ast)}</td><td>${f1(p.reb)}</td></tr>`).join("");
+  };
+  return `<div class="pl"><h4>Top 5 jugadores por puntos (promedio por juego)</h4>
+    <table><tr><th>Jugador</th><th>Equipo</th><th>PTS</th><th>AST</th><th>REB</th></tr>
+    ${part(H, "h")}${part(A, "a")}</table></div>`;
+}
+
+function render() {
+  if (!DATA) return;
+  const el = $("#games"), st = $("#status");
+  const T = DATA.teams || {};
+  const empty = { standing: null, h1: null, pts: null, three: null, reb: null, ast: null, players: null };
+  const q = ($("#q").value || "").trim().toLowerCase();
+  const onlyFull = $("#full").checked;
+  const conf = (n) => (T[n] && T[n].standing && T[n].standing.div) || "";
+  const hasData = (n) => T[n] && T[n].pts;
+  const all = DATA.games || [];
+  const list = all.filter((g) =>
+    (!q || [g.home, g.away, conf(g.home), conf(g.away)].some((x) => x.toLowerCase().includes(q))) &&
+    (!onlyFull || (hasData(g.home) && hasData(g.away))));
+
+  const day = DATA.date || $("#date").value;
+  if (!all.length) {
+    el.innerHTML = `<div class="empty">No hay partidos de NCAAB el ${dayTitle(day)}. Usa ◀ ▶ o el calendario para ver otro día.</div>`;
+  } else if (!list.length) {
+    el.innerHTML = `<div class="empty">Ningún partido coincide con el filtro. Borra la búsqueda o desmarca "Solo con datos".</div>`;
+  } else {
+    el.innerHTML = `<h2 class="day">${dayTitle(day)}</h2>` + list.map((g) => {
+      const H = { ...empty, name: g.home, ...(T[g.home] || {}) }, A = { ...empty, name: g.away, ...(T[g.away] || {}) };
+      return `<article class="game">
+        <div class="meta"><span>${esc(g.time)}${g.location ? " · " + esc(g.location) : ""}${g.neutral ? " · neutral" : ""}</span>
+          ${g.hotness != null ? `<span title="Hotness score de TeamRankings">🔥 ${f1(g.hotness)}</span>` : ""}</div>
+        <div class="teams">${teamRow(H, "home", g.homeRank)}${teamRow(A, "away", g.awayRank)}</div>
+        <div class="boxes">${box(H, "home", g.neutral)}${box(A, "away", g.neutral)}</div>
+        ${calc(H, A, g.neutral)}
+        ${playersBox(H, A)}
+      </article>`;
+    }).join("");
+  }
+
+  const when = new Date(DATA.updated).toLocaleString("es-EC");
+  const hidden = all.length - list.length;
+  st.className = FROM_CACHE ? "warn" : "";
+  st.textContent = FROM_CACHE
+    ? `No se pudo conectar con TeamRankings. Mostrando datos guardados del ${when}.`
+    : `${list.length} partido(s) · ${dayTitle(day)}${hidden ? ` (${hidden} ocultos por el filtro)` : ""} · actualizado ${when}`;
+
+  const w = DATA.warnings || [];
+  $("#warnbox").hidden = !w.length;
+  $("#warnlist").innerHTML = w.map((x) => `<li>${esc(x)}</li>`).join("");
+}
+
+let reqId = 0;
+async function load() {
+  const date = $("#date").value || isoOf(new Date());
+  const my = ++reqId; // si el usuario cambia de fecha rápido, solo vale la última respuesta
+  const btn = $("#load");
+  btn.disabled = true; btn.textContent = "Cargando…";
+  $("#status").className = ""; $("#status").textContent = `Leyendo TeamRankings (${dayTitle(date)})…`;
+  const cacheKey = "ncaab-radar:" + date;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 25000);
+    const r = await fetch(`/api/ncaab?date=${date}`, { signal: ctrl.signal });
+    clearTimeout(t);
+    let data;
+    try { data = await r.json(); } catch { throw new Error(`respuesta no válida (HTTP ${r.status})`); }
+    if (!r.ok || !data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    if (my !== reqId) return;
+    data.date = data.date || date;
+    try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch {}
+    DATA = data; FROM_CACHE = false; render();
+  } catch (e) {
+    if (my !== reqId) return;
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(cacheKey) || "null"); } catch {}
+    if (saved) { DATA = saved; FROM_CACHE = true; render(); }
+    else {
+      DATA = null;
+      $("#games").innerHTML = "";
+      $("#warnbox").hidden = true;
+      $("#status").className = "err";
+      $("#status").textContent = `No se pudieron cargar los datos: ${e.name === "AbortError" ? "tiempo de espera agotado" : e.message}. Pulsa Actualizar para reintentar.`;
+    }
+  } finally {
+    if (my === reqId) { btn.disabled = false; btn.textContent = "Actualizar"; }
+  }
+}
+
+function shift(n) { $("#date").value = addDays($("#date").value || isoOf(new Date()), n); load(); }
+
+$("#date").value = isoOf(new Date());
+$("#load").addEventListener("click", load);
+$("#date").addEventListener("change", load);
+$("#prev").addEventListener("click", () => shift(-1));
+$("#next").addEventListener("click", () => shift(1));
+$("#q").addEventListener("input", () => DATA && render());
+$("#full").addEventListener("change", () => DATA && render());
+load();
+</script>
+</body>
+</html>
