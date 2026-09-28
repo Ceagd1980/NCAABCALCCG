@@ -171,13 +171,22 @@ function parseSchedule(html) {
     const txt = (r[iM] || "").replace(/\(\d+-\d+\)/g, "").trim();
     const mm = txt.match(/^(?:#(\d+)\s+)?(.+?)\s+(at|vs\.?|@)\s+(?:#(\d+)\s+)?(.+)$/i);
     if (!mm) continue;
+    // Partido jugado: marcador junto a cada equipo ("Duke 78 at UNC 70") o en otra celda ("78-70", "Final")
+    const sc = (raw) => { const m = /\s(\d{2,3})\s*$/.exec(raw.trim()); return m ? +m[1] : null; };
+    let awayScore = sc(mm[2]), homeScore = sc(mm[5]);
+    if (awayScore == null || homeScore == null) awayScore = homeScore = null;
+    let time = iTime >= 0 ? r[iTime] || "" : "";
+    const scoreCell = r.find((c, i) => i !== iM && /^\D*\d{2,3}\s*[-–]\s*\d{2,3}\D*$/.test(c) && !/\d{1,2}:\d{2}/.test(c));
+    const result = awayScore == null ? (scoreCell ? scoreCell.trim() : /final/i.test(time) ? time : "") : "";
+    if (/final/i.test(time) || (scoreCell && time === scoreCell)) time = "";
     games.push({
       away: cleanTeam(mm[2]),
       awayRank: mm[1] ? +mm[1] : null,
       home: cleanTeam(mm[5]),
       homeRank: mm[4] ? +mm[4] : null,
       neutral: !/^(at|@)$/i.test(mm[3]),
-      time: iTime >= 0 ? r[iTime] || "" : "",
+      awayScore, homeScore, result,
+      time,
       location: iLoc >= 0 ? r[iLoc] || "" : "",
       hotness: iHot >= 0 ? num(r[iHot]) : null,
     });
@@ -233,6 +242,9 @@ function parseStandings(html) {
     const iRank = idx(/^rank$/i);
     const iPct = idx(/pct|%/i);
     const iStreak = idx(/streak|strk/i);
+    // Récord en casa y fuera (si la tabla trae esas columnas)
+    const iHome = idx(/^home$|^casa$|^home\s*w-l/i), iRoad = idx(/^road$|^away$|^fuera$|^road\s*w-l|^away\s*w-l/i);
+    const rec = (c) => { const m = /^(\d+)-(\d+)$/.exec(String(c || "").trim()); return m ? { w: +m[1], l: +m[2], gp: +m[1] + +m[2] } : null; };
 
     const title = titleBefore(html, t.index);
     const plain = title.replace(/\b(standings|conference)\b/gi, "").replace(/\s+/g, " ").trim();
@@ -267,6 +279,9 @@ function parseStandings(html) {
         record: best ? best.txt : "",
         pct,
         streak: iStreak >= 0 ? r[iStreak] : "",
+        w: best ? best.w : null, l: best ? best.l : null, gp: best ? best.g : null,
+        home: iHome >= 0 ? rec(r[iHome]) : null,
+        road: iRoad >= 0 ? rec(r[iRoad]) : null,
       };
     }
   });
